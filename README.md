@@ -9,7 +9,7 @@ This project simulates a federated learning environment where SDN controllers ac
 The dataset used by the controllers is located at:
 
    ```
-   your/path/to/project/src/new_dataset
+   your/path/to/project/src/dataset
    ```
 If you need to modify or replace the dataset, ensure you update the corresponding file paths in the controller scripts (controller1.py, controller2.py, etc.) accordingly.
 
