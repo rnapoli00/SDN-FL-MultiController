@@ -9,7 +9,7 @@ This project simulates a federated learning environment where SDN controllers ac
 The dataset used by the controllers is located at:
 
    ```
-   your/path/to/project/src/new_dataset/new_client_1.csv
+   your/path/to/project/src/new_dataset
    ```
 If you need to modify or replace the dataset, ensure you update the corresponding file paths in the controller scripts (controller1.py, controller2.py, etc.) accordingly.
 
@@ -37,7 +37,7 @@ pip install pandas matplotlib torch torchmetrics torchvision
 ### 1. Start FL Server 
 
 ```bash
-cd your/path/to/project/src/server.py
+cd your/path/to/project/src
 python3 server.py
 ```
 
@@ -55,7 +55,7 @@ python3 ryu-manager --observe-links your/path/to/project/src/controller1.py
 #### **Terminal 1 - Controller 2 (separate instance)**
 
 ```bash
-
+cd your/path/to/ryu/bin
 python3 ryu-manager --observe-links --ofp-tcp-listen-port 6634 your/path/to/project/src/controller2.py
 ```
 
@@ -68,7 +68,7 @@ python3 ryu-manager --observe-links --ofp-tcp-listen-port 6634 your/path/to/proj
 In another terminal window, run:
 
 ```bash
-cd cd your/path/to/project/src/
+cd cd your/path/to/project/src
 sudo -E mn --custom myTopo.py --topo create_topo --switch ovs --controller=remote,ip=127.0.0.1,port=6633 --controller=remote,ip=127.0.0.1,port=6634 --arp --mac
 ```
 
