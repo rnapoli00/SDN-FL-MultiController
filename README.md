@@ -15,7 +15,7 @@ If you need to modify or replace the dataset, ensure you update the correspondin
 
 ---
 
-## 💪 Environment Setup
+## Environment Setup
 
 - Python version: 3.9 (Conda environment recommended)
 
@@ -71,7 +71,7 @@ In another terminal window, run:
 cd your/path/to/project/src
 sudo -E mn --custom myTopo.py --topo create_topo --switch ovs --controller=remote,ip=127.0.0.1,port=6633 --controller=remote,ip=127.0.0.1,port=6634 --arp --mac
 ```
-From the Mininet CLI, make sure to send a packet through the network (for example, with the pingall command):
+From the Mininet CLI, make sure to send a packet through the network (for example, with the pingall command) to start the FL client training process:
 
 ```bash
 pingall
@@ -103,3 +103,4 @@ xterm h3
 The processes remain in the background even after the terminal is closed. These commands help to clear the memory from other controller instances and other FL instances respectively:
 pkill -f '^python3 ryu-manager --observe-links'
 pkill -f '^python3 serverTest.py'
+
