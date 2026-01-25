@@ -2,15 +2,14 @@
 
 from ryu.base import app_manager
 from ryu.ofproto import ofproto_v1_3
-from ryu.controller.handler import set_ev_cls
-from ryu.controller.handler import MAIN_DISPATCHER, CONFIG_DISPATCHER
+from ryu.controller.handler import set_ev_cls, MAIN_DISPATCHER, CONFIG_DISPATCHER
 from ryu.controller import ofp_event
 
 from ryu.topology import event
 from ryu.topology.api import get_switch, get_link
 
-from ryu.lib.packet import packet
-from ryu.lib.packet import ethernet
+from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp, arp
+
 
 import networkx as nx
 import threading
@@ -38,249 +37,12 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
 from torchmetrics import Recall, ConfusionMatrix
-import datetime
 import torch.optim
 import random
 
 import subprocess
-import sys
-import os
-
-
-
-# Class to create own customized dataset
-class build_torch_dataset:
-    def __init__(self, data, targets):
-        self.data = data
-        self.targets = targets
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        current_sample = self.data[idx, :]
-        current_target = self.targets[idx]
-        return (torch.tensor(current_sample, dtype=torch.float), torch.tensor(current_target, dtype=torch.long))
-
-# Convert dataframe to the torch dataset
-def convert_df_to_torch_dataset(df):
-
-    # Extract the features and the targets
-    df_data = df.iloc[:, 0: len(df.columns) - 1]
-    df_target= df.iloc[:, len(df.columns) - 1: len(df.columns)]
-
-    # Convert the dataframe to numpy array first
-    ds_torch_data = df_data.to_numpy()
-    ds_torch_target = df_target.to_numpy()
-    
-    # Convert labels from 2D to 1D
-    ds_torch_target_list = ds_torch_target.tolist()
-    ds_torch_target_1D = []
-    for i in range(len(ds_torch_target_list)):
-        ds_torch_target_1D = np.append(ds_torch_target_1D, ds_torch_target_list[i][0])
-
-    ds_torch = build_torch_dataset(ds_torch_data, ds_torch_target_1D)
-    return ds_torch
-
-
-class NeuralNetwork(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(115, 100),
-            nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, 5),
-            nn.Softmax(dim=1)
-        )
-    def forward(self, features):
-        x = self.flatten(features)
-        logits = self.linear_relu_stack(x)
-        return logits
-
-#print(NeuralNetwork().to('cpu'))
-
-def get_parameters(net):
-            return [val.cpu().numpy() for _, val in net.state_dict().items()]
-
-def set_parameters(net, parameters):
-            params_dict = zip(net.state_dict().keys(), parameters)
-            state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
-            net.load_state_dict(state_dict, strict=True)
-
-               
-# Function to perform the evaluation of each model based on the confusion matrix
-def evaluation(confmat_glb):
-
-    # Display the confusion matrix
-    print(confmat_glb)
-
-    # Achieve the TP, FN, FP for benign
-    tp_benign = confmat_glb[0, 0].item()
-    fn_benign = confmat_glb[0, 1].item() + confmat_glb[0, 2].item() + confmat_glb[0, 3].item() + confmat_glb[0, 4].item()
-    fp_benign = confmat_glb[1, 0].item() + confmat_glb[2, 0].item() + confmat_glb[3, 0].item() + confmat_glb[4, 0].item()
-
-    # Achieve the TP, FN, FP for ACK
-    tp_ack = confmat_glb[1, 1].item()
-    fn_ack = confmat_glb[1, 0].item() + confmat_glb[1, 2].item() + confmat_glb[1, 3].item() + confmat_glb[1, 4].item()
-    fp_ack = confmat_glb[0, 1].item() + confmat_glb[2, 1].item() + confmat_glb[3, 1].item() + confmat_glb[4, 1].item()
-
-
-    # calcualte recall, precision and f1 score for each label respective
-    recall_benign, precision_benign, f1_score_benign = evaluation_helper(tp_benign, fn_benign, fp_benign)
-    recall_ack, precision_ack, f1_score_ack = evaluation_helper(tp_ack, fn_ack, fp_ack)
-
-
-    # Add them to a 2D list
-    return [[recall_benign, precision_benign, f1_score_benign], [ recall_ack, precision_ack, f1_score_ack]]
-
-# Helper function to calculate recall precision and f1 score
-def evaluation_helper(tp, fn, fp):
-    if tp == 0:
-        recall = 0
-        precision = 0
-        f1_score = 0
-    else:
-        recall = round((tp)/(tp + fn), 4)
-        precision = round((tp)/(tp + fp), 4)
-        f1_score = round(2 * ((precision * recall)/(precision + recall)), 4)
-
-
-    return recall, precision, f1_score
-
-def display_evaluation(eval_list):
-    print()
-    print("The display will followed by format: Type: [Recall, precision, f1_score]")
-    for i in range(len(eval_list)):
-        if i == 0:
-            print('benign:', end = ' ')
-        if i == 1:
-            print('ack:', end = ' ')
-                
-        print(eval_list[i])
-
-
-def train(dataloader, model, loss_fn, optimizer, epoch):
-    for i in range(epoch):
-        model.train()
-        for tup in dataloader:
-
-            X = tup[0]
-            y = tup[1]
-
-            pred = model(X)
-            loss = loss_fn(pred, y)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-
-        
-def test(dataloader, model, loss_fn):
-    size = len(dataloader.dataset)
-    model.eval()
-    test_loss, total = 0, 0
-    recall_glb = 0.0
-    recall_model = Recall(task="multiclass", average='macro', num_classes=5)
-    confmat_glb = torch.zeros(5, 5, dtype=torch.int64)
-    with torch.no_grad():
-        for tup in dataloader:
-            X = tup[0]
-            y = tup[1]
-
-            # calculate y_pred
-            pred = model(X)
-            test_loss += loss_fn(pred, y).item()
-
-            # Find the specific target
-            pred_int = pred.argmax(1)
-            recall_local = recall_model(pred_int, y)
-
-            recall_glb += recall_local
-
-            total += y.size(0)
-
-            # Generate the confusion matrix
-            confmat = ConfusionMatrix(task="multiclass", num_classes=5)
-
-             
-            confmat_local = confmat(pred_int, y)
-            confmat_glb += confmat_local
-
-
-    recall_glb /= size
-    recall_glb = recall_glb * 12
-    test_loss /= size
-
-    eval_list = evaluation(confmat_glb)
-    display_evaluation(eval_list)
-            
-    return test_loss, recall_glb
-
-def train_test_itr(epochs, train_loader, test_loader):
-    loss_fn = nn.CrossEntropyLoss()
-    model_dnn = NeuralNetwork()
-    optimizer = torch.optim.SGD(model_dnn.parameters(), lr=1e-3)
-    for t in range(epochs):
-        print(f"Epoch {t + 1}\n----------------------------------------------")
-        train(train_loader, model_dnn, loss_fn, optimizer, epoch=5)
-        test(test_loader, model_dnn, loss_fn)
-        
-        
-class FlowerClient(fl.client.NumPyClient):
-    def __init__(self, net, trainloader, valloader, loss_func, optimizer, epoch):
-        self.net = net
-        self.trainloader = trainloader
-        self.valloader = valloader
-        self.loss_func = loss_func
-        self.optimizer = optimizer
-        self.epoch = epoch
-                
-    def get_parameters(self, config):
-        return get_parameters(self.net)
-
-    def fit(self, parameters, config):
-        set_parameters(self.net, parameters)
-        train(self.trainloader, self.net, self.loss_func, self.optimizer, self.epoch)
-        return get_parameters(self.net), len(self.trainloader), {}
-
-    def evaluate(self, parameters, config):
-        set_parameters(self.net, parameters)
-        torch.save(self.net.state_dict(), 'mode1_new.pt')
-        loss, accuracy = test(self.valloader, self.net, self.loss_func)
-        return float(loss), len(self.valloader), {"accuracy": float(accuracy)}
-
-# ----------------------------
-# --- CHANGED FOR NEW FLOWER API ---
-# Creiamo una factory function client_fn(context) che restituisce un oggetto di tipo flwr.client.Client.
-# Questo viene realizzato convertendo il NumPyClient con `.to_client()`.
-# NOTA: start_client accetta `client_fn` (consente l'avvio compatibile con le API nuove).
-# ----------------------------
-
-def make_client_fn(net, trainloader, valloader, loss_fun, optimizer, epoch):
-    """
-    Ritorna una funzione client_fn(context) che istanzia e ritorna un flwr.client.Client.
-    Usiamo una closure per passare le risorse locali (modello, loader, ecc.).
-    """
-
-    # Funzione client_fn (nuova API Flower)
-    def client_fn(context):
-        client_id = random.randint(1, 100)
-        print(f"[Client {client_id}] Avvio client dummy...")
-        numpy_client = FlowerClient(client_id, net, trainloader, valloader, loss_fun, optimizer, epoch)
-        return numpy_client.to_client()
-    return client_fn
-
-
+import socket
+import struct
 
 
 
@@ -292,6 +54,24 @@ class Controller2(app_manager.RyuApp):
         self.topology_api_app = self
         self.net = nx.DiGraph()
         self.ldl_started = False
+        self.packet_records = []
+        self.last_saved_index = 0
+        self.counter = 0
+        self.idcontroller = 2
+        self.last_packet_time = None
+        self.mac_encoder = {}
+        self.mac_counter = 1
+
+
+    def encode_mac(self, mac):
+        if mac not in self.mac_encoder:
+            self.mac_encoder[mac] = self.mac_counter
+            self.mac_counter += 1
+        return self.mac_encoder[mac]
+
+    def ip_to_int(self, ip):
+        return struct.unpack("!I", socket.inet_aton(ip))[0]
+
 
 
     @set_ev_cls(event.EventSwitchEnter)
@@ -308,9 +88,6 @@ class Controller2(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
-
-        
-            
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -323,6 +100,7 @@ class Controller2(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
+        
         msg = ev.msg
         datapath = msg.datapath
         pkt = packet.Packet(msg.data)
@@ -331,16 +109,193 @@ class Controller2(app_manager.RyuApp):
         dpid = datapath.id
         src = eth.src
         dst = eth.dst
+        print(self.counter)
 
+        if self.counter >= 14500:    
+            ip = pkt.get_protocol(ipv4.ipv4)
+            tcp_seg = pkt.get_protocol(tcp.tcp)
+            udp_seg = pkt.get_protocol(udp.udp)
+            arp_pkt = pkt.get_protocol(arp.arp)
+            tcp_fin=0
+            tcp_syn=0
+            tcp_rst=0
+            tcp_psh=0
+            tcp_ack=0 
+            tcp_urg = 0
+            if tcp_seg:
+                src_port = tcp_seg.src_port
+                dst_port = tcp_seg.dst_port
+                flags = tcp_seg.bits
 
-        #esempio semplice: lunghezza MAC
-        #feature = [len(src), len(dst)]
-        #label = 0 if src < dst else 1  #esempio fittizio: "src precede dst?"
+                tcp_fin = int(flags & 0x01 != 0)
+                tcp_syn = int(flags & 0x02 != 0)
+                tcp_rst = int(flags & 0x04 != 0)
+                tcp_psh = int(flags & 0x08 != 0)
+                tcp_ack = int(flags & 0x10 != 0)
+                tcp_urg = int(flags & 0x20 != 0)
+            elif udp_seg:
+                src_port = udp_seg.src_port
+                dst_port = udp_seg.dst_port
+                #tcp_fin = tcp_syn = tcp_rst = tcp_psh = tcp_ack = tcp_urg = 0
+            else:
+                src_port = None
+                dst_port = None
+            
+            
+            ip_atk= ["10.0.0.2", "10.0.0.5"]
+            #ip_atkd= ["10.0.0.3", "10.0.0.6"]
 
-        #self.X_local.append(feature)
-        #self.y_local.append(label)
+            
+            if ip is not None:
+                src_ip = ip.src
+                dst_ip = ip.dst
+                ip_proto = ip.proto
+            else:
+                src_ip = None
+                dst_ip = None
+                ip_proto = None
+                
+                
+            # 0 = benign
+            # 1 = ack
+            # 2 = syn
+            # 3 = fin
+            # 4 = udp
+            if udp_seg:
+                target = 4       
+            if tcp_ack:
+                target = 1
+            elif tcp_syn:
+                target = 2
+            elif tcp_fin:
+                target = 3
+            #or dei primi 2 in xor col terzo
+            #elif src_ip in ip_atk or dst_ip in ip_atk:
+            #    target = 3
+            else:
+                target = 0
+                
 
+                
+            #src_ip_enc = self.ip_to_int(src_ip) if src_ip else 0
+            #dst_ip_enc = self.ip_to_int(dst_ip) if dst_ip else 0
 
+            # Timestamp attuale (in secondi floating point)
+            current_time = time.time()
+
+            # Calcolo del delta_time
+            if self.last_packet_time is None:
+                delta_time = 0.0   # primo pacchetto
+            else:
+                delta_time = current_time - self.last_packet_time
+
+            # Aggiorna il last_packet_time
+            self.last_packet_time = current_time
+
+            # Salva anche timestamp leggibile
+            timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            features = {
+                #"src_ip": src_ip,
+                #"dst_ip": dst_ip,
+                #"src_port": src_port,
+                #"dst_port": dst_port,
+                #"time": timestamp_str,
+                "delta_time": delta_time,
+                #"dpid": datapath.id,    #id univoco di uno switch sdn, indica traffico che passa per un determinato switch
+                #"src_mac": eth.src,
+                #"dst_mac": eth.dst,
+                "eth_type": eth.ethertype,
+                #"src_ip_enc": src_ip_enc,
+                #"dst_ip_enc": dst_ip_enc,
+                "ip_proto": ip_proto,
+                "pkt_len": len(msg.data),
+                "tcp_fin": tcp_fin,
+                "tcp_syn": tcp_syn,
+                "tcp_rst": tcp_rst,
+                "tcp_psh": tcp_psh,
+                "tcp_ack": tcp_ack,
+                "tcp_urg": tcp_urg,
+                "target": target
+            }
+
+        
+            
+            self.packet_records.append(features)
+        
+            csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv"
+
+            df = pd.DataFrame([features])   # salva SOLO l'ultimo pacchetto
+
+            df.to_csv(
+                csv_path,
+                mode='a',                                   # append
+                header=not os.path.exists(csv_path),        # scrive l'header solo al primo pacchetto
+                index=False
+            )
+
+        '''
+        if len(self.packet_records) > self.last_saved_index:
+
+            csv_path = "/home/tesimagistrale1/Desktop/networkdataset.csv"
+
+            # prendi solo i nuovi record
+            new_records = self.packet_records[self.last_saved_index:]
+            df = pd.DataFrame(new_records)
+
+            df.to_csv(csv_path,
+                    mode='a',
+                    header=not os.path.exists(csv_path),
+                    index=False)
+
+            self.last_saved_index = len(self.packet_records)
+
+            print(f"[Controller] Salvati {len(new_records)} nuovi record (totale: {len(self.packet_records)})")
+        '''
+        
+        '''
+        if len(self.packet_records) >= self.last_saved_index + 100:
+
+            csv_path = "/home/tesimagistrale1/Desktop/networkdataset.csv"
+
+            # prendi solo i nuovi record
+            new_records = self.packet_records[self.last_saved_index:]
+            df = pd.DataFrame(new_records)
+
+            df.to_csv(
+                csv_path,
+                mode='a',
+                header=not os.path.exists(csv_path),
+                index=False
+            )
+
+            # aggiorna l’indice fino a dove hai salvato
+            self.last_saved_index = len(self.packet_records)
+
+            print(f"[Controller] Salvati {len(new_records)} nuovi record (totale: {len(self.packet_records)})")
+        '''
+        '''
+        if len(self.packet_records) % 100 == 0:
+            df = pd.DataFrame(self.packet_records[-100:])  # solo gli ultimi 100 pacchetti
+
+            csv_path = "/home/tesimagistrale1/Desktop/networkdataset.csv"
+
+            df.to_csv(
+                csv_path,
+                mode='a',                                   # append
+                header=not os.path.exists(csv_path),        # scrive l'header solo se il file non esiste
+                index=False
+            )
+
+            print(f"[Controller] Aggiunti 100 nuovi record al dataset (totale raccolti: {len(self.packet_records)})")
+            
+        #if len(self.packet_records) % 100 == 0:
+        #    df = pd.DataFrame(self.packet_records)
+        #    df.to_csv("/home/tesimagistrale1/Desktop/networkdataset.csv", index=False)
+        #    print(f"[Controller] Dataset aggiornato con {len(self.packet_records)} record.")
+        '''
+
+        
         if src not in self.net:
             self.net.add_node(src)
             self.net.add_edge(dpid, src, port=msg.match['in_port'])
@@ -352,19 +307,43 @@ class Controller2(app_manager.RyuApp):
             print(self.net.edges())
 
         elif src in self.net and dst in self.net:
-            print(">>>> Add your logic here <<<<")
+            #print(">>>> Add your logic here <<<<")
+            self.counter += 1
+            #print(self.counter)
             
+            
+            '''
             if not self.ldl_started:
-                self.ldl_started = True  # 🔐 Imposta il flag subito
+                self.ldl_started = True 
+                
                 script_path = "/home/tesimagistrale1/Desktop/progetto tesi/project/src/fl_client.py"
 
-                # Avvia il secondo script in un processo separato
                 print(f"[Controller] Avvio Client...")
                 subprocess.Popen([sys.executable, script_path])
+                '''
+                    
+            if not self.ldl_started and self.counter >= 27000:
+                self.ldl_started = True 
+                print(">>> Raggiunti 19000 pacchetti: STOP alla raccolta dataset 2 <<<")
+                
+                # Installa una regola catch-all per non ricevere più PacketIn
+                ofproto = datapath.ofproto
+                parser = datapath.ofproto_parser
+
+                match = parser.OFPMatch()  # Match su tutto
+                actions = []               # Nessuna azione verso il controller
+                self.add_flow(datapath, 100, match, actions)
+
+                script_path = "/home/tesimagistrale1/Desktop/attack1/project/src/fl_client.py"
+                controllerid = 2
+
+                print(f"[Controller] Avvio Client...")
+                subprocess.Popen([sys.executable, script_path, str(controllerid)])
+                
+            
 
 
-
-
+            '''
             # Find the shortest path and store on a list.
             path_list = nx.shortest_path(self.net, source=src, target=dst, weight=None, method='dijkstra')
             
@@ -395,12 +374,39 @@ class Controller2(app_manager.RyuApp):
             out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                       in_port=msg.match['in_port'], actions=action_forward)
             datapath.send_msg(out)
-            
-            # FL Setup
-            #self.X_local = []
-            #self.y_local = []
-            #self.model = SGDClassifier(max_iter=1, tol=None)
+            '''
 
+
+            path_list = nx.shortest_path(self.net, source=src, target=dst)
+            next_hop = path_list[path_list.index(dpid) + 1]
+            parser = datapath.ofproto_parser
+            ofproto = datapath.ofproto
+            match = parser.OFPMatch(eth_dst=dst)
+            out_port = self.net[dpid][next_hop]['port']
+
+            # Forward + copy-to-controller
+            actions = [
+                parser.OFPActionOutput(out_port),
+                parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
+                                       ofproto.OFPCML_NO_BUFFER)
+            ]
+
+
+
+            # Install the "monitoring" flow rule
+            self.add_flow(datapath, 1, match, actions)
+
+            # Send packet out immediately
+            parser = datapath.ofproto_parser
+            out = parser.OFPPacketOut(
+                datapath=datapath,
+                buffer_id=msg.buffer_id,
+                in_port=msg.match['in_port'],
+                actions=[parser.OFPActionOutput(out_port)]
+            )
+            datapath.send_msg(out)
+
+            
 
     def add_flow(self, datapath, priority, match, actions):
         ofproto = datapath.ofproto

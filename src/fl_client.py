@@ -29,6 +29,9 @@ import random
 
 import sys
 import os
+
+from sklearn.preprocessing import StandardScaler
+
 '''
 # --- Gestione ID Client da argomento ---
 if len(sys.argv) > 1:
@@ -58,10 +61,15 @@ def convert_df_to_torch_dataset(df):
     # Extract the features and the targets
     df_data = df.iloc[:, 0: len(df.columns) - 1]
     df_target= df.iloc[:, len(df.columns) - 1: len(df.columns)]
+    
+        
+    scaler = StandardScaler()
+    df_data = scaler.fit_transform(df_data)
 
     # Convert the dataframe to numpy array first
-    ds_torch_data = df_data.to_numpy()
+    #ds_torch_data = df_data.to_numpy()
     ds_torch_target = df_target.to_numpy()
+    ds_torch_data = df_data
     
     # Convert labels from 2D to 1D
     ds_torch_target_list = ds_torch_target.tolist()
@@ -76,25 +84,24 @@ def convert_df_to_torch_dataset(df):
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super().__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(115, 100),
+        #self.flatten = nn.Flatten()
+        #self.linear_relu_stack = nn.Sequential(
+        self.net = nn.Sequential(
+
+            nn.Linear(10, 64),
             nn.ReLU(),
-            nn.Linear(100, 100),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
-            nn.Linear(100, 5),
-            nn.Softmax(dim=1)
+            nn.Linear(64, 5),
+            #nn.Softmax(dim=1)
         )
-    def forward(self, features):
-        x = self.flatten(features)
-        logits = self.linear_relu_stack(x)
-        return logits
+    #def forward(self, features):
+    #    x = self.flatten(features)
+    #    logits = self.linear_relu_stack(x)
+    #    return logits
+    def forward(self, x):
+        return self.net(x)
+        
 
 #print(NeuralNetwork().to('cpu'))
 
@@ -111,6 +118,7 @@ def set_parameters(net, parameters):
 def evaluation(confmat_glb):
 
     # Display the confusion matrix
+    print("matrice di confusione, righe= classe vera, colonne classe predetta:")
     print(confmat_glb)
 
     # Achieve the TP, FN, FP for benign
@@ -123,14 +131,34 @@ def evaluation(confmat_glb):
     fn_ack = confmat_glb[1, 0].item() + confmat_glb[1, 2].item() + confmat_glb[1, 3].item() + confmat_glb[1, 4].item()
     fp_ack = confmat_glb[0, 1].item() + confmat_glb[2, 1].item() + confmat_glb[3, 1].item() + confmat_glb[4, 1].item()
 
+    # Achieve the TP, FN, FP for SYN
+    tp_syn = confmat_glb[2, 2].item()
+    fn_syn= confmat_glb[2, 0].item() + confmat_glb[2, 1].item() + confmat_glb[2, 3].item() + confmat_glb[2, 4].item()
+    fp_syn = confmat_glb[0, 2].item() + confmat_glb[1, 2].item() + confmat_glb[3, 2].item() + confmat_glb[4, 2].item()
+    
+    # Achieve the TP, FN, FP for FIN
+    tp_fin = confmat_glb[3, 3].item()
+    fn_fin= confmat_glb[3, 0].item() + confmat_glb[3, 1].item() + confmat_glb[3, 2].item() + confmat_glb[3, 4].item()
+    fp_fin = confmat_glb[0, 3].item() + confmat_glb[1, 3].item() + confmat_glb[2, 3].item() + confmat_glb[4, 3].item()
+
+    # Achieve the TP, FN, FP for UDP
+    tp_udp = confmat_glb[4, 4].item()
+    fn_udp= confmat_glb[4, 0].item() + confmat_glb[4, 1].item() + confmat_glb[4, 2].item() + confmat_glb[4, 3].item()
+    fp_udp = confmat_glb[0, 4].item() + confmat_glb[1, 4].item() + confmat_glb[2, 4].item() + confmat_glb[3, 4].item()
+
 
     # calcualte recall, precision and f1 score for each label respective
     recall_benign, precision_benign, f1_score_benign = evaluation_helper(tp_benign, fn_benign, fp_benign)
     recall_ack, precision_ack, f1_score_ack = evaluation_helper(tp_ack, fn_ack, fp_ack)
+    recall_syn, precision_syn, f1_score_syn = evaluation_helper(tp_syn, fn_syn, fp_syn)
+    recall_fin, precision_fin, f1_score_fin = evaluation_helper(tp_fin, fn_fin, fp_fin)
+    recall_udp, precision_udp, f1_score_udp = evaluation_helper(tp_udp, fn_udp, fp_udp)
 
 
     # Add them to a 2D list
-    return [[recall_benign, precision_benign, f1_score_benign], [ recall_ack, precision_ack, f1_score_ack]]
+    return [[recall_benign, precision_benign, f1_score_benign], [ recall_ack, precision_ack, f1_score_ack],
+            [recall_syn, precision_syn, f1_score_syn], [recall_fin, precision_fin, f1_score_fin], [recall_udp, precision_udp, f1_score_udp]]
+
 
 # Helper function to calculate recall precision and f1 score
 def evaluation_helper(tp, fn, fp):
@@ -154,6 +182,12 @@ def display_evaluation(eval_list):
             print('benign:', end = ' ')
         if i == 1:
             print('ack:', end = ' ')
+        if i == 2:
+            print('syn:', end = ' ')
+        if i == 3:
+            print('fin:', end = ' ')
+        if i == 4:
+            print('udp:', end = ' ')
                 
         print(eval_list[i])
 
@@ -217,25 +251,26 @@ def test(dataloader, model, loss_fn):
     return test_loss, recall_glb
 
 def train_test_itr(epochs, train_loader, test_loader):
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
     model_dnn = NeuralNetwork()
     optimizer = torch.optim.SGD(model_dnn.parameters(), lr=1e-3)
     for t in range(epochs):
         print(f"Epoch {t + 1}\n----------------------------------------------")
-        train(train_loader, model_dnn, loss_fn, optimizer, epoch=5)
+        print(f"prova fl_client\n----------------------------------------------")
+        train(train_loader, model_dnn, loss_fn, optimizer, epoch=5) #5 epoch ogni iterazione del for
         test(test_loader, model_dnn, loss_fn)
         
         
 class FlowerClient(fl.client.NumPyClient):
-    def __init__(self, client_id, net, trainloader, valloader, loss_func, optimizer, epoch):
-        self.client_id = client_id
+    def __init__(self, net, trainloader, valloader, loss_func, optimizer, epoch): #rimosso clientid
+        #self.client_id = client_id
         self.net = net
         self.trainloader = trainloader
         self.valloader = valloader
         self.loss_func = loss_func
         self.optimizer = optimizer
         self.epoch = epoch
-        print("avvio client")
+        
     def get_parameters(self, config):
         return get_parameters(self.net)
 
@@ -267,9 +302,7 @@ def make_client_fn(net, trainloader, valloader, loss_fun, optimizer, epoch):
 
     # Funzione client_fn (nuova API Flower)
     def client_fn(context):
-        client_id = random.randint(1, 100)
-        print(f"[Client {client_id}] Avvio client dummy...")
-        numpy_client = FlowerClient(client_id, net, trainloader, valloader, loss_fun, optimizer, epoch)
+        numpy_client = FlowerClient(net, trainloader, valloader, loss_fun, optimizer, epoch)
         return numpy_client.to_client()
     return client_fn
 
@@ -280,8 +313,17 @@ def read_csv_files(path_name):
     df_ori = pd.read_csv(path_name)
     return df_ori
 
+controllerid = sys.argv[1]
 print(os.getcwd())
-df_processed = read_csv_files("/home/tesimagistrale1/Desktop/progetto tesi/project/new_dataset/new_client1.csv")
+print("ciao, ecco il controller id")
+print(controllerid)
+#df_processed = read_csv_files("/home/tesimagistrale1/Desktop/progetto tesi/project/new_dataset/new_client1.csv")
+if int(controllerid) == 1:
+    print("sono dentro lo statement corretto")
+    df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv")
+elif int(controllerid) == 2:
+    print("sono dentro lo statement del controller 2")
+    df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv")
 
 
 # 80% for training and 20% for testing
