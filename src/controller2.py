@@ -162,18 +162,20 @@ class Controller2(app_manager.RyuApp):
             # 3 = fin
             # 4 = udp
             if udp_seg:
-                target = 4       
-            if tcp_ack:
-                target = 1
+                target = 4
+            elif tcp_fin: 
+                target = 3
             elif tcp_syn:
                 target = 2
-            elif tcp_fin:
-                target = 3
+            elif tcp_ack:
+                target = 1
             #or dei primi 2 in xor col terzo
             #elif src_ip in ip_atk or dst_ip in ip_atk:
             #    target = 3
             else:
                 target = 0
+
+
                 
 
                 
@@ -220,19 +222,21 @@ class Controller2(app_manager.RyuApp):
             }
 
         
+            if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in features.values()):
+                print(f"[Controller1] Pacchetto invalido skippato: {features}")  
+            else:
+                self.packet_records.append(features)
             
-            self.packet_records.append(features)
-        
-            csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv"
+                csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv"
 
-            df = pd.DataFrame([features])   # salva SOLO l'ultimo pacchetto
+                df = pd.DataFrame([features])   # salva SOLO l'ultimo pacchetto
 
-            df.to_csv(
-                csv_path,
-                mode='a',                                   # append
-                header=not os.path.exists(csv_path),        # scrive l'header solo al primo pacchetto
-                index=False
-            )
+                df.to_csv(
+                    csv_path,
+                    mode='a',                                   # append
+                    header=not os.path.exists(csv_path),        # scrive l'header solo al primo pacchetto
+                    index=False
+                )
 
         '''
         if len(self.packet_records) > self.last_saved_index:
@@ -322,7 +326,7 @@ class Controller2(app_manager.RyuApp):
                 subprocess.Popen([sys.executable, script_path])
                 '''
                     
-            if not self.ldl_started and self.counter >= 27000:
+            if not self.ldl_started and self.counter >= 20000:
                 self.ldl_started = True 
                 print(">>> Raggiunti 19000 pacchetti: STOP alla raccolta dataset 2 <<<")
                 

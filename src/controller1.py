@@ -154,7 +154,6 @@ class Controller1(app_manager.RyuApp):
                 dst_ip = None
                 ip_proto = None
                 
-                
             # 0 = benign
             # 1 = ack
             # 2 = syn
@@ -219,23 +218,27 @@ class Controller1(app_manager.RyuApp):
                 "target": target
             }
 
-            self.packet_records.append(features)
+            # Dopo aver creato features
+            if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in features.values()):
+                print(f"[Controller1] Pacchetto invalido skippato: {features}")  
+            else:
+                self.packet_records.append(features)
             
-            #if self.counter < 5000:
-            #    csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv"
-            #if self.counter >= 5000:
-            #    csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv"
-                
-            csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv"
+                #if self.counter < 5000:
+                #    csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv"
+                #if self.counter >= 5000:
+                #    csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv"
+                    
+                csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv"
 
-            df = pd.DataFrame([features])   # salva SOLO l'ultimo pacchetto
+                df = pd.DataFrame([features])   # salva SOLO l'ultimo pacchetto
 
-            df.to_csv(
-                csv_path,
-                mode='a',                                   # append
-                header=not os.path.exists(csv_path),        # scrive l'header solo al primo pacchetto
-                index=False
-            )
+                df.to_csv(
+                    csv_path,
+                    mode='a',                                   # append
+                    header=not os.path.exists(csv_path),        # scrive l'header solo al primo pacchetto
+                    index=False
+                )
 
         '''
         if len(self.packet_records) > self.last_saved_index:
@@ -325,7 +328,7 @@ class Controller1(app_manager.RyuApp):
                 subprocess.Popen([sys.executable, script_path])
                 '''
                     
-            if not self.ldl_started and self.counter >= 27000:
+            if not self.ldl_started and self.counter >= 20000:
                 self.ldl_started = True 
                 print(">>> Raggiunti 9000 pacchetti: STOP alla raccolta dataset <<<")
                 

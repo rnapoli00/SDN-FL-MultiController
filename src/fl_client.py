@@ -56,15 +56,17 @@ class build_torch_dataset:
         return (torch.tensor(current_sample, dtype=torch.float), torch.tensor(current_target, dtype=torch.long))
 
 # Convert dataframe to the torch dataset
-def convert_df_to_torch_dataset(df):
+def convert_df_to_torch_dataset(df, scaler= None):
 
     # Extract the features and the targets
     df_data = df.iloc[:, 0: len(df.columns) - 1]
     df_target= df.iloc[:, len(df.columns) - 1: len(df.columns)]
     
-        
-    scaler = StandardScaler()
-    df_data = scaler.fit_transform(df_data)
+    if scaler is None:        
+        scaler = StandardScaler()
+        df_data = scaler.fit_transform(df_data)
+    else:
+        df_data = scaler.transform(df_data)
 
     # Convert the dataframe to numpy array first
     #ds_torch_data = df_data.to_numpy()
@@ -78,7 +80,7 @@ def convert_df_to_torch_dataset(df):
         ds_torch_target_1D = np.append(ds_torch_target_1D, ds_torch_target_list[i][0])
 
     ds_torch = build_torch_dataset(ds_torch_data, ds_torch_target_1D)
-    return ds_torch
+    return ds_torch, scaler
 
 
 class NeuralNetwork(nn.Module):
@@ -251,9 +253,11 @@ def test(dataloader, model, loss_fn):
     return test_loss, recall_glb
 
 def train_test_itr(epochs, train_loader, test_loader):
-    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
+    loss_fn = nn.CrossEntropyLoss()
+    #loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
     model_dnn = NeuralNetwork()
-    optimizer = torch.optim.SGD(model_dnn.parameters(), lr=1e-3)
+    optimizer = torch.optim.SGD(model_dnn.parameters(), lr=1e-4, momentum=0.9)
+    #optimizer = torch.optim.SGD(model_dnn.parameters(), lr=1e-3)
     for t in range(epochs):
         print(f"Epoch {t + 1}\n----------------------------------------------")
         print(f"prova fl_client\n----------------------------------------------")
@@ -336,6 +340,8 @@ df_client_test = df_client_test_ori.reset_index(drop=True)
  # (Traning does not know the target but testing we will test it)
 
 df_client_train = df_client_train_ori[df_client_train_ori['target'] != 0].reset_index(drop=True)
+#df_client_train = df_client_train_ori.reset_index(drop=True)
+
 
 plt.subplot(2, 2, 1)
 plt.title("Train label distribution client1", fontsize=10)
@@ -346,12 +352,14 @@ plt.subplot(2, 2, 2)
 plt.title("Test label distribution client1", fontsize=10)
 df_client_test.groupby('target').size().plot(kind='pie', autopct='%.2f', figsize=(5,5))
 
-ds_torch_train_client = convert_df_to_torch_dataset(df=df_client_train)
-ds_torch_test_client = convert_df_to_torch_dataset(df=df_client_test)
+ds_torch_train_client, scaler = convert_df_to_torch_dataset(df_client_train)
+ds_torch_test_client, _ = convert_df_to_torch_dataset(df_client_test, scaler=scaler)
 
 
-train_loader_client = torch.utils.data.DataLoader(ds_torch_train_client, batch_size = 12, drop_last=True)
-test_loader_client = torch.utils.data.DataLoader(ds_torch_test_client, batch_size = 12, drop_last=True)
+train_loader_client = torch.utils.data.DataLoader(ds_torch_train_client, batch_size = 64, drop_last=False)
+test_loader_client = torch.utils.data.DataLoader(ds_torch_test_client, batch_size = 64, drop_last=False)
+#train_loader_client = torch.utils.data.DataLoader(ds_torch_train_client, batch_size = 12, drop_last=True)
+#test_loader_client = torch.utils.data.DataLoader(ds_torch_test_client, batch_size = 12, drop_last=True)
         
 
 def LDL_rst(e):
