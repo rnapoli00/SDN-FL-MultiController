@@ -32,15 +32,6 @@ import os
 
 from sklearn.preprocessing import StandardScaler
 
-'''
-# --- Gestione ID Client da argomento ---
-if len(sys.argv) > 1:
-    client_name = sys.argv[1]
-else:
-    client_name = "client1"  
-'''
-
-
 # Class to create own customized dataset
 class build_torch_dataset:
     def __init__(self, data, targets):
@@ -89,7 +80,6 @@ class NeuralNetwork(nn.Module):
         #self.flatten = nn.Flatten()
         #self.linear_relu_stack = nn.Sequential(
         self.net = nn.Sequential(
-
             nn.Linear(10, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
@@ -319,14 +309,12 @@ def read_csv_files(path_name):
 
 controllerid = sys.argv[1]
 print(os.getcwd())
-print("ciao, ecco il controller id")
-print(controllerid)
 #df_processed = read_csv_files("/home/tesimagistrale1/Desktop/progetto tesi/project/new_dataset/new_client1.csv")
 if int(controllerid) == 1:
-    print("sono dentro lo statement corretto")
+    print("Controller id 1, leggo dataset controller1")
     df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv")
 elif int(controllerid) == 2:
-    print("sono dentro lo statement del controller 2")
+    print("Controller id 2, leggo dataset controller2")
     df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv")
 
 
@@ -339,8 +327,8 @@ df_client_test = df_client_test_ori.reset_index(drop=True)
 # For traning dataset drop the data that belongs to the specific target to simulate unknown attack
  # (Traning does not know the target but testing we will test it)
 
-df_client_train = df_client_train_ori[df_client_train_ori['target'] != 0].reset_index(drop=True)
-#df_client_train = df_client_train_ori.reset_index(drop=True)
+#df_client_train = df_client_train_ori[df_client_train_ori['target'] != 0].reset_index(drop=True)
+df_client_train = df_client_train_ori.reset_index(drop=True)
 
 
 plt.subplot(2, 2, 1)
@@ -366,15 +354,15 @@ def LDL_rst(e):
     print()
     train_test_itr(epochs=e, train_loader=train_loader_client, test_loader=test_loader_client)
 
-starttime_LDL = datetime.datetime.now()
+#starttime_LDL = datetime.datetime.now()
                 
-LDL_rst(e = 2)
+#LDL_rst(e = 2)
 
-endtime_LDL = datetime.datetime.now()
+#endtime_LDL = datetime.datetime.now()
 
-time_LDL = (endtime_LDL - starttime_LDL).seconds
+#time_LDL = (endtime_LDL - starttime_LDL).seconds
 
-time_LDL
+#time_LDL
 
 
 trainloader = train_loader_client

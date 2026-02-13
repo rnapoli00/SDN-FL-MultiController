@@ -109,7 +109,14 @@ class Controller1(app_manager.RyuApp):
         src = eth.src
         dst = eth.dst
 
+        if dpid != 1:
+            return
+
+        self.counter += 1
+        
+        
         print(self.counter)
+        
         if self.counter < 5900:          
             ip = pkt.get_protocol(ipv4.ipv4)
             tcp_seg = pkt.get_protocol(tcp.tcp)
@@ -160,13 +167,13 @@ class Controller1(app_manager.RyuApp):
             # 3 = fin
             # 4 = udp
             if udp_seg:
-                target = 4       
-            if tcp_ack:
-                target = 1
+                target = 4
+            elif tcp_fin: 
+                target = 3
             elif tcp_syn:
                 target = 2
-            elif tcp_fin:
-                target = 3
+            elif tcp_ack:
+                target = 1
             #or dei primi 2 in xor col terzo
             #elif src_ip in ip_atk or dst_ip in ip_atk:
             #    target = 3
@@ -314,7 +321,7 @@ class Controller1(app_manager.RyuApp):
 
         elif src in self.net and dst in self.net:
             #print(">>>> Add your logic here <<<<")
-            self.counter += 1
+            #self.counter += 1
             #print(self.counter)
             
             
@@ -328,7 +335,7 @@ class Controller1(app_manager.RyuApp):
                 subprocess.Popen([sys.executable, script_path])
                 '''
                     
-            if not self.ldl_started and self.counter >= 20000:
+            if not self.ldl_started and self.counter >= 14000:
                 self.ldl_started = True 
                 print(">>> Raggiunti 9000 pacchetti: STOP alla raccolta dataset <<<")
                 
