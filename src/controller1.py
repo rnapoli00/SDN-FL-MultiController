@@ -115,9 +115,9 @@ class Controller1(app_manager.RyuApp):
         self.counter += 1
         
         
-        print(self.counter)
+        #print(self.counter)
         
-        if self.counter < 5900:          
+        if self.counter < 20000:          
             ip = pkt.get_protocol(ipv4.ipv4)
             tcp_seg = pkt.get_protocol(tcp.tcp)
             udp_seg = pkt.get_protocol(udp.udp)
@@ -230,13 +230,10 @@ class Controller1(app_manager.RyuApp):
                 print(f"[Controller1] Pacchetto invalido skippato: {features}")  
             else:
                 self.packet_records.append(features)
-            
-                #if self.counter < 5000:
-                #    csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv"
-                #if self.counter >= 5000:
-                #    csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv"
                     
-                csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv"
+                #csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv"
+                base_path = os.path.dirname(os.path.abspath(__file__))
+                csv_path = os.path.join(base_path, "networkdatasetcontroller1.csv")
 
                 df = pd.DataFrame([features])   # salva SOLO l'ultimo pacchetto
 
@@ -246,67 +243,6 @@ class Controller1(app_manager.RyuApp):
                     header=not os.path.exists(csv_path),        # scrive l'header solo al primo pacchetto
                     index=False
                 )
-
-        '''
-        if len(self.packet_records) > self.last_saved_index:
-
-            csv_path = "/home/tesimagistrale1/Desktop/networkdataset.csv"
-
-            # prendi solo i nuovi record
-            new_records = self.packet_records[self.last_saved_index:]
-            df = pd.DataFrame(new_records)
-
-            df.to_csv(csv_path,
-                    mode='a',
-                    header=not os.path.exists(csv_path),
-                    index=False)
-
-            self.last_saved_index = len(self.packet_records)
-
-            print(f"[Controller] Salvati {len(new_records)} nuovi record (totale: {len(self.packet_records)})")
-        '''
-        
-        '''
-        if len(self.packet_records) >= self.last_saved_index + 100:
-
-            csv_path = "/home/tesimagistrale1/Desktop/networkdataset.csv"
-
-            # prendi solo i nuovi record
-            new_records = self.packet_records[self.last_saved_index:]
-            df = pd.DataFrame(new_records)
-
-            df.to_csv(
-                csv_path,
-                mode='a',
-                header=not os.path.exists(csv_path),
-                index=False
-            )
-
-            # aggiorna l’indice fino a dove hai salvato
-            self.last_saved_index = len(self.packet_records)
-
-            print(f"[Controller] Salvati {len(new_records)} nuovi record (totale: {len(self.packet_records)})")
-        '''
-        '''
-        if len(self.packet_records) % 100 == 0:
-            df = pd.DataFrame(self.packet_records[-100:])  # solo gli ultimi 100 pacchetti
-
-            csv_path = "/home/tesimagistrale1/Desktop/networkdataset.csv"
-
-            df.to_csv(
-                csv_path,
-                mode='a',                                   # append
-                header=not os.path.exists(csv_path),        # scrive l'header solo se il file non esiste
-                index=False
-            )
-
-            print(f"[Controller] Aggiunti 100 nuovi record al dataset (totale raccolti: {len(self.packet_records)})")
-            
-        #if len(self.packet_records) % 100 == 0:
-        #    df = pd.DataFrame(self.packet_records)
-        #    df.to_csv("/home/tesimagistrale1/Desktop/networkdataset.csv", index=False)
-        #    print(f"[Controller] Dataset aggiornato con {len(self.packet_records)} record.")
-        '''
 
         
         if src not in self.net:
@@ -325,19 +261,10 @@ class Controller1(app_manager.RyuApp):
             #print(self.counter)
             
             
-            '''
-            if not self.ldl_started:
-                self.ldl_started = True 
-                
-                script_path = "/home/tesimagistrale1/Desktop/progetto tesi/project/src/fl_client.py"
-
-                print(f"[Controller] Avvio Client...")
-                subprocess.Popen([sys.executable, script_path])
-                '''
                     
             if not self.ldl_started and self.counter >= 14000:
                 self.ldl_started = True 
-                print(">>> Raggiunti 9000 pacchetti: STOP alla raccolta dataset <<<")
+                print(">>> Raggiunti 14000 pacchetti: STOP alla raccolta dataset <<<")
                 
                 # Installa una regola catch-all per non ricevere più PacketIn
                 ofproto = datapath.ofproto
@@ -347,7 +274,9 @@ class Controller1(app_manager.RyuApp):
                 actions = []               # Nessuna azione verso il controller
                 self.add_flow(datapath, 100, match, actions)
 
-                script_path = "/home/tesimagistrale1/Desktop/attack1/project/src/fl_client.py"
+                base_path = os.path.dirname(os.path.abspath(__file__))
+                script_path = os.path.join(base_path, "fl_client.py")
+                #script_path = "/home/tesimagistrale1/Desktop/attack1/project/src/fl_client.py"
                 controllerid = 1
 
                 print(f"[Controller] Avvio Client...")
@@ -356,45 +285,19 @@ class Controller1(app_manager.RyuApp):
             
 
 
-            '''
             # Find the shortest path and store on a list.
-            path_list = nx.shortest_path(self.net, source=src, target=dst, weight=None, method='dijkstra')
+            path_list = nx.shortest_path(self.net, source=src, target=dst)
             
             # Find next hop of the forwarding path.
             next_hop = path_list[path_list.index(dpid) + 1]
-
+            
             parser = datapath.ofproto_parser
+            ofproto = datapath.ofproto
             
             # Destination on flow table should match to the final destination.
             match = parser.OFPMatch(eth_dst=dst)
             
             # Find out port for next hop.
-            out_port = self.net[dpid][next_hop]['port']
-
-            action_forward = [parser.OFPActionOutput(out_port)]
-            
-            # Add forwarding rule to flow table and set priority to 1.
-            self.add_flow(datapath, 1, match, action_forward)
-            print("Added rule: eth=", dst, " out_port=", out_port)
-            
-            # Find switch id for source and destination
-            src_id = path_list[1]
-            dest_id = path_list[len(path_list) - 2]
-
-            # Forward original packet
-            parser = datapath.ofproto_parser
-
-            out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
-                                      in_port=msg.match['in_port'], actions=action_forward)
-            datapath.send_msg(out)
-            '''
-
-
-            path_list = nx.shortest_path(self.net, source=src, target=dst)
-            next_hop = path_list[path_list.index(dpid) + 1]
-            parser = datapath.ofproto_parser
-            ofproto = datapath.ofproto
-            match = parser.OFPMatch(eth_dst=dst)
             out_port = self.net[dpid][next_hop]['port']
 
             # Forward + copy-to-controller

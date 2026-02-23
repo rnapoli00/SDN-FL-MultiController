@@ -271,7 +271,9 @@ class FlowerClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         set_parameters(self.net, parameters)
         train(self.trainloader, self.net, self.loss_func, self.optimizer, self.epoch)
+        #riga sottostante per fedAvg
         return get_parameters(self.net), len(self.trainloader), {}
+        #return get_parameters(config={}), 1000, {}
 
     def evaluate(self, parameters, config):
         set_parameters(self.net, parameters)
@@ -308,14 +310,20 @@ def read_csv_files(path_name):
     return df_ori
 
 controllerid = sys.argv[1]
-print(os.getcwd())
+print(f"Working Directory: {os.getcwd()}")
+base_path = os.path.dirname(os.path.abspath(__file__))
+
 #df_processed = read_csv_files("/home/tesimagistrale1/Desktop/progetto tesi/project/new_dataset/new_client1.csv")
 if int(controllerid) == 1:
     print("Controller id 1, leggo dataset controller1")
-    df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv")
+    #df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller1.csv")
+    target_csv = os.path.join(base_path, "networkdatasetcontroller1.csv")
+    df_processed = read_csv_files(target_csv)
 elif int(controllerid) == 2:
     print("Controller id 2, leggo dataset controller2")
-    df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv")
+    #df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv")
+    target_csv = os.path.join(base_path, "networkdatasetcontroller2.csv")
+    df_processed = read_csv_files(target_csv)
 
 
 # 80% for training and 20% for testing
@@ -369,11 +377,11 @@ trainloader = train_loader_client
 valloader = test_loader_client
 loss_fun = nn.CrossEntropyLoss()
 model_dnn = NeuralNetwork()
-optimizer = torch.optim.SGD(model_dnn.parameters(), lr=1e-3)
-                
+#optimizer = torch.optim.SGD(model_dnn.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(model_dnn.parameters(), lr=0.001)        
 
 
-client_name = make_client_fn(model_dnn, trainloader, valloader, loss_fun, optimizer, epoch=3)
+client_name = make_client_fn(model_dnn, trainloader, valloader, loss_fun, optimizer, epoch=5)
          
                 
 fl.client.start_client(
