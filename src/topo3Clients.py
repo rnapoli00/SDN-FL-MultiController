@@ -24,16 +24,24 @@ class create_topo(Topo):
         for i in range(1, 4):
             host = self.addHost('h' + str(i))
             self.addLink(host, switch)
-            
-        
 
         switch = self.addSwitch('s2')
         switch_list.append(switch)
+        
         for i in range(4, 7):
+            host = self.addHost('h' + str(i))
+            self.addLink(host, switch)
+            
+        switch = self.addSwitch('s3')
+        switch_list.append(switch)
+        
+        for i in range(7, 10):
             host = self.addHost('h' + str(i))
             self.addLink(host, switch)
 
         self.addLink(switch_list[0], switch_list[1])
+        self.addLink(switch_list[1], switch_list[2])
+        self.addLink(switch_list[0], switch_list[2])
         
         
 

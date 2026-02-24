@@ -46,18 +46,18 @@ import struct
 
 
 
-class Controller2(app_manager.RyuApp):
+class Controller3(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        super(Controller2, self).__init__(*args, **kwargs)
+        super(Controller3, self).__init__(*args, **kwargs)
         self.topology_api_app = self
         self.net = nx.DiGraph()
         self.ldl_started = False
         self.packet_records = []
         self.last_saved_index = 0
         self.counter = 0
-        self.idcontroller = 2
+        self.idcontroller = 3
         self.last_packet_time = None
         self.mac_encoder = {}
         self.mac_counter = 1
@@ -110,7 +110,7 @@ class Controller2(app_manager.RyuApp):
         src = eth.src
         dst = eth.dst
         
-        if dpid != 2:
+        if dpid != 3:
             return
 
         self.counter += 1
@@ -229,13 +229,13 @@ class Controller2(app_manager.RyuApp):
 
         
             if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in features.values()):
-                print(f"[Controller2] Pacchetto invalido skippato: {features}")  
+                print(f"[Controller3] Pacchetto invalido skippato: {features}")  
             else:
                 self.packet_records.append(features)
             
-                #csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv"
+                #csv_path = "/home/tesimagistrale1/Desktop/networkdatasetcontroller3.csv"
                 base_path = os.path.dirname(os.path.abspath(__file__))
-                csv_path = os.path.join(base_path, "networkdatasetcontroller2.csv")
+                csv_path = os.path.join(base_path, "networkdatasetcontroller3.csv")
 
                 df = pd.DataFrame([features])   # salva SOLO l'ultimo pacchetto
 
@@ -261,7 +261,7 @@ class Controller2(app_manager.RyuApp):
                     
             if not self.ldl_started and self.counter >= 12500:
                 self.ldl_started = True 
-                print(">>> Raggiunti 12500 pacchetti: STOP alla raccolta dataset 2 <<<")
+                print(">>> Raggiunti 12500 pacchetti: STOP alla raccolta dataset 3 <<<")
                 
                 # Installa una regola catch-all per non ricevere più PacketIn
                 ofproto = datapath.ofproto
@@ -274,7 +274,7 @@ class Controller2(app_manager.RyuApp):
                 base_path = os.path.dirname(os.path.abspath(__file__))
                 script_path = os.path.join(base_path, "fl_client.py")
                 #script_path = "/home/tesimagistrale1/Desktop/attack1/project/src/fl_client.py"
-                controllerid = 2
+                controllerid = 3
 
                 print(f"[Controller] Avvio Client...")
                 subprocess.Popen([sys.executable, script_path, str(controllerid)])

@@ -324,6 +324,11 @@ elif int(controllerid) == 2:
     #df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller2.csv")
     target_csv = os.path.join(base_path, "networkdatasetcontroller2.csv")
     df_processed = read_csv_files(target_csv)
+elif int(controllerid) == 3:
+    print("Controller id 3, leggo dataset controller3")
+    #df_processed = read_csv_files("/home/tesimagistrale1/Desktop/networkdatasetcontroller3.csv")
+    target_csv = os.path.join(base_path, "networkdatasetcontroller3.csv")
+    df_processed = read_csv_files(target_csv)
 
 
 # 80% for training and 20% for testing
