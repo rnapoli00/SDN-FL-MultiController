@@ -1,6 +1,6 @@
 # Federated Learning with SDN Controllers using Mininet and Ryu
 
-This project simulates a federated learning environment where SDN controllers act as clients and communicate through an aggregator node. The entire setup is built using Mininet for network emulation and Ryu as the SDN controller framework.
+This project simulates a federated learning environment where SDN controllers act as FL clients and communicate through an aggregator node. The entire setup is built using Mininet for network emulation and Ryu as the SDN controller framework.
 
 ---
 
@@ -86,4 +86,5 @@ Replace "nameofattack.txt" with one of the proposed attacks (synflood.txt, udpfl
 The processes remain in the background even after the terminal is closed. These commands help to clear the memory from other controller instances and other FL instances respectively:
 pkill -f '^python3 ryu-manager --observe-links'
 pkill -f '^python3 serverTest.py'
+
 
