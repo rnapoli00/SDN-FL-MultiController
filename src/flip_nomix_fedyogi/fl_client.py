@@ -23,7 +23,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
 from torchmetrics import Recall, ConfusionMatrix
-import datetime
+import csv
 import time
 import torch.optim
 import random
@@ -241,7 +241,7 @@ def test(dataloader, model, loss_fn):
     eval_list = evaluation(confmat_glb)
     display_evaluation(eval_list)
             
-    return test_loss, recall_glb
+    return test_loss, recall_glb, eval_list, confmat_glb
 
 def train_test_itr(epochs, train_loader, test_loader):
     loss_fn = nn.CrossEntropyLoss()
@@ -257,14 +257,16 @@ def train_test_itr(epochs, train_loader, test_loader):
         
         
 class FlowerClient(fl.client.NumPyClient):
-    def __init__(self, net, trainloader, valloader, loss_func, optimizer, epoch): #rimosso clientid
-        #self.client_id = client_id
+    def __init__(self, net, trainloader, valloader, loss_func, optimizer, epoch,
+                 controllerid, base_path):          # ← aggiunto
         self.net = net
         self.trainloader = trainloader
         self.valloader = valloader
         self.loss_func = loss_func
         self.optimizer = optimizer
         self.epoch = epoch
+        self.controllerid = controllerid            # ← salvato sull'istanza
+        self.base_path = base_path                  # ← salvato sull'istanza
         
     def get_parameters(self, config):
         return get_parameters(self.net)
@@ -278,10 +280,52 @@ class FlowerClient(fl.client.NumPyClient):
 
     def evaluate(self, parameters, config):
         set_parameters(self.net, parameters)
-        torch.save(self.net.state_dict(), 'mode2_new.pt')
-        loss, accuracy = test(self.valloader, self.net, self.loss_func)
-        return float(loss), len(self.valloader), {"accuracy": float(accuracy)}    
-
+        torch.save(self.net.state_dict(), f'model_client_{self.controllerid}.pt')
+        
+        loss, accuracy, eval_list, confmat_glb = test(self.valloader, self.net, self.loss_func)
+        
+        current_round = config.get("server_round", 0)
+        
+        class_names = ["benign", "ack", "syn", "fin", "udp"]
+        
+        per_class_metrics = {}
+        for i, name in enumerate(class_names):
+            per_class_metrics[f"recall_{name}"]    = eval_list[i][0]
+            per_class_metrics[f"precision_{name}"] = eval_list[i][1]
+            per_class_metrics[f"f1_{name}"]        = eval_list[i][2]
+        
+        confmat_list = confmat_glb.tolist()
+        cm_header = [f"cm_{r}_{c}" for r in range(5) for c in range(5)]
+        cm_values  = [confmat_list[r][c] for r in range(5) for c in range(5)]
+        
+        # usa self.controllerid e self.base_path invece delle variabili globali
+        results_file = os.path.join(self.base_path, f"metrics_client_{self.controllerid}.csv")
+        file_exists = os.path.isfile(results_file)
+        
+        with open(results_file, mode='a', newline='') as f:
+            print(f"scrivo su: {results_file}")
+            writer = csv.writer(f)
+            if not file_exists:
+                header = ["round", "timestamp", "loss", "accuracy"]
+                header += [f"recall_{n}"    for n in class_names]
+                header += [f"precision_{n}" for n in class_names]
+                header += [f"f1_{n}"        for n in class_names]
+                header += cm_header
+                writer.writerow(header)
+            
+            row = [
+                current_round,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                float(loss),
+                float(accuracy)
+            ]
+            row += [per_class_metrics[f"recall_{n}"]    for n in class_names]
+            row += [per_class_metrics[f"precision_{n}"] for n in class_names]
+            row += [per_class_metrics[f"f1_{n}"]        for n in class_names]
+            row += cm_values
+            writer.writerow(row)
+            
+        return float(loss), len(self.valloader), {"accuracy": float(accuracy)}
 
 
 # ----------------------------
@@ -291,18 +335,18 @@ class FlowerClient(fl.client.NumPyClient):
 # NOTA: start_client accetta `client_fn` (consente l'avvio compatibile con le API nuove).
 # ----------------------------
 
-def make_client_fn(net, trainloader, valloader, loss_fun, optimizer, epoch):
+def make_client_fn(net, trainloader, valloader, loss_fun, optimizer, epoch,
+                   controllerid, base_path):        # ← aggiunto
     """
     Ritorna una funzione client_fn(context) che istanzia e ritorna un flwr.client.Client.
-    Usiamo una closure per passare le risorse locali (modello, loader, ecc.).
     """
-
-    # Funzione client_fn (nuova API Flower)
     def client_fn(context):
-        numpy_client = FlowerClient(net, trainloader, valloader, loss_fun, optimizer, epoch)
+        numpy_client = FlowerClient(
+            net, trainloader, valloader, loss_fun, optimizer, epoch,
+            controllerid, base_path                # ← passato alla classe
+        )
         return numpy_client.to_client()
     return client_fn
-
 
 
 
@@ -386,26 +430,23 @@ def main():
     print(f"Training locale su: {len(df_client_train)} campioni")
     print(f"Test globale (unseen) su: {len(df_client_test)} campioni")
 
-    # 4. Visualizzazione (opzionale, aggiornata)
     plt.figure(figsize=(10, 5))
     plt.subplot(1, 2, 1)
     plt.title(f"Train Dist (Client {controllerid})")
     df_client_train.groupby('target').size().plot(kind='pie', autopct='%.1f%%')
-
     plt.subplot(1, 2, 2)
     plt.title("Global Test Dist (All Clients)")
     df_client_test.groupby('target').size().plot(kind='pie', autopct='%.1f%%')
-    # plt.show() # Decommenta se vuoi vedere i grafici
+    plot_path = os.path.join(base_path, f"dataset_distribution_client_{controllerid}.png")
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"[Client {controllerid}] Distribuzione salvata in: {plot_path}")
 
-    # 5. Conversione in Tensor Dataset
-    # Nota: il fit dello scaler avviene SOLO sui dati di training locali
     ds_torch_train_client, scaler = convert_df_to_torch_dataset(df_client_train)
-    # Applichiamo lo stesso scaler (fit locale) al test set globale
-    ds_torch_test_client, _ = convert_df_to_torch_dataset(df_client_test, scaler=scaler)
+    ds_torch_test_client,  _     = convert_df_to_torch_dataset(df_client_test, scaler=scaler)
 
-    # 6. DataLoader
     train_loader_client = torch.utils.data.DataLoader(ds_torch_train_client, batch_size=64, shuffle=True)
-    test_loader_client = torch.utils.data.DataLoader(ds_torch_test_client, batch_size=64, shuffle=False)
+    test_loader_client  = torch.utils.data.DataLoader(ds_torch_test_client,  batch_size=64, shuffle=False)
             
 
 
@@ -432,12 +473,14 @@ def main():
     optimizer = torch.optim.Adam(model_dnn.parameters(), lr=0.001)        
 
 
-    client_name = make_client_fn(model_dnn, trainloader, valloader, loss_fun, optimizer, epoch=5)
+    client_fn = make_client_fn(
+        model_dnn, trainloader, valloader, loss_fun, optimizer, epoch=5,
+        controllerid=controllerid, base_path=base_path   # ← passato esplicitamente
+    )
             
-                    
     fl.client.start_client(
-    server_address = "127.0.0.1:8080",
-    client_fn=client_name,
+        server_address="127.0.0.1:8080",
+        client_fn=client_fn,
     )
 
 if __name__ == "__main__":
