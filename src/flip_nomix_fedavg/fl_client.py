@@ -23,7 +23,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
 from torchmetrics import Recall, ConfusionMatrix
-import datetime
+import csv
 import torch.optim
 import random
 import time
@@ -240,7 +240,7 @@ def test(dataloader, model, loss_fn):
     eval_list = evaluation(confmat_glb)
     display_evaluation(eval_list)
             
-    return test_loss, recall_glb
+    return test_loss, recall_glb, eval_list, confmat_glb
 
 def train_test_itr(epochs, train_loader, test_loader):
     loss_fn = nn.CrossEntropyLoss()
@@ -277,9 +277,59 @@ class FlowerClient(fl.client.NumPyClient):
 
     def evaluate(self, parameters, config):
         set_parameters(self.net, parameters)
-        torch.save(self.net.state_dict(), 'mode2_new.pt')
-        loss, accuracy = test(self.valloader, self.net, self.loss_func)
-        return float(loss), len(self.valloader), {"accuracy": float(accuracy)}    
+        # Salviamo lo stato del modello
+        torch.save(self.net.state_dict(), f'model_client_{controllerid}.pt')
+        
+        # Eseguiamo il test
+        loss, accuracy, eval_list, confmat_glb = test(self.valloader, self.net, self.loss_func)
+        
+        # --- LOGICA DI SALVATAGGIO RISULTATI ---
+        # Determiniamo il round corrente (se passato dal server)
+        current_round = config.get("server_round", 0)
+        
+        # Nomi delle classi nell'ordine corrispondente a eval_list
+        class_names = ["benign", "ack", "syn", "fin", "udp"]
+        
+        # Dizionario piatto: recall_<classe>, precision_<classe>, f1_<classe>
+        per_class_metrics = {}
+        for i, name in enumerate(class_names):
+            per_class_metrics[f"recall_{name}"]    = eval_list[i][0]
+            per_class_metrics[f"precision_{name}"] = eval_list[i][1]
+            per_class_metrics[f"f1_{name}"]        = eval_list[i][2]
+        
+        # Confusion matrix come 25 colonne separate: cm_<riga>_<colonna>
+        confmat_list = confmat_glb.tolist()   # lista 5x5 di int
+        cm_header = [f"cm_{r}_{c}" for r in range(5) for c in range(5)]
+        cm_values  = [confmat_list[r][c]    for r in range(5) for c in range(5)]
+        
+        results_file = os.path.join(base_path, f"metrics_client_{controllerid}.csv")
+        file_exists = os.path.isfile(results_file)
+        
+        with open(results_file, mode='a', newline='') as f:
+            print(f"scrivo su: {results_file}")
+            writer = csv.writer(f)
+            # Scriviamo l'header solo se il file è nuovo
+            if not file_exists:
+                header = ["round", "timestamp", "loss", "accuracy"]
+                header += [f"recall_{n}"    for n in class_names]
+                header += [f"precision_{n}" for n in class_names]
+                header += [f"f1_{n}"        for n in class_names]
+                header += cm_header
+                writer.writerow(header)
+            
+            row = [
+                current_round,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                float(loss),
+                float(accuracy)
+            ]
+            row += [per_class_metrics[f"recall_{n}"]    for n in class_names]
+            row += [per_class_metrics[f"precision_{n}"] for n in class_names]
+            row += [per_class_metrics[f"f1_{n}"]        for n in class_names]
+            row += cm_values
+            writer.writerow(row)
+            
+        return float(loss), len(self.valloader), {"accuracy": float(accuracy)} 
 
 
 
@@ -385,16 +435,18 @@ print(f"--- Client {controllerid} ---")
 print(f"Training locale su: {len(df_client_train)} campioni")
 print(f"Test globale (unseen) su: {len(df_client_test)} campioni")
 
-    # 4. Visualizzazione (opzionale, aggiornata)
 plt.figure(figsize=(10, 5))
 plt.subplot(1, 2, 1)
 plt.title(f"Train Dist (Client {controllerid})")
 df_client_train.groupby('target').size().plot(kind='pie', autopct='%.1f%%')
-
+ 
 plt.subplot(1, 2, 2)
 plt.title("Global Test Dist (All Clients)")
 df_client_test.groupby('target').size().plot(kind='pie', autopct='%.1f%%')
-# plt.show() # Decommenta se vuoi vedere i grafici
+plot_path = os.path.join(base_path, f"dataset_distribution_client_{controllerid}.png")
+plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+plt.close()
+print(f"[Client {controllerid}] Distribuzione salvata in: {plot_path}")
 
     # 5. Conversione in Tensor Dataset
     # Nota: il fit dello scaler avviene SOLO sui dati di training locali
@@ -405,6 +457,7 @@ ds_torch_test_client, _ = convert_df_to_torch_dataset(df_client_test, scaler=sca
     # 6. DataLoader
 train_loader_client = torch.utils.data.DataLoader(ds_torch_train_client, batch_size=64, shuffle=True)
 test_loader_client = torch.utils.data.DataLoader(ds_torch_test_client, batch_size=64, shuffle=False)
+    
     
 '''
 #df_processed = read_csv_files("/home/tesimagistrale1/Desktop/progetto tesi/project/new_dataset/new_client1.csv")
