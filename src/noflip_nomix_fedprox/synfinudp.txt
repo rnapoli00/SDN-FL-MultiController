@@ -1,9 +1,9 @@
 h3 python3 -m http.server 8851 &
-h1 ping -i 0.2 -c100 h3
+h1 ping -i 0.2 -c500 h3
 h2 hping3 -S -p 8851 -i u100 -c 10000 h3 2>&1
 h6 python3 -m http.server 8852 &
-h4 ping -i 0.2 -c100 h6
+h4 ping -i 0.2 -c500 h6
 h5 hping3 -F -i u100 -c 10000 h6 2>&1
 h9 python3 -m http.server 8853 &
-h7 ping -i 0.2 -c100 h9
+h7 ping -i 0.2 -c500 h9
 h8 hping3 -2 -a h7 -i u100 -c 14000 h9 2>&1

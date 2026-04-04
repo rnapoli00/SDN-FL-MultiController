@@ -202,47 +202,44 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
 
 
         
+
 def test(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
+    num_batches = len(dataloader)
     model.eval()
-    test_loss, total = 0, 0
-    recall_glb = 0.0
-    recall_model = Recall(task="multiclass", average='macro', num_classes=5)
+    
+    test_loss, correct = 0, 0
     confmat_glb = torch.zeros(5, 5, dtype=torch.int64)
+    
     with torch.no_grad():
         for tup in dataloader:
             X = tup[0]
             y = tup[1]
 
-            # calculate y_pred
+            # Calcola le predizioni
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
 
-            # Find the specific target
+            # Estrapola la classe predetta
             pred_int = pred.argmax(1)
-            recall_local = recall_model(pred_int, y)
+            
+            # Calcola il numero di predizioni corrette per la vera Accuracy
+            correct += (pred_int == y).type(torch.float).sum().item()
 
-            recall_glb += recall_local
-
-            total += y.size(0)
-
-            # Generate the confusion matrix
+            # Aggiorna la matrice di confusione
             confmat = ConfusionMatrix(task="multiclass", num_classes=5)
-
-             
             confmat_local = confmat(pred_int, y)
             confmat_glb += confmat_local
 
+    # Calcolo metriche globali corrette
+    test_loss /= num_batches
+    accuracy = correct / size
 
-    recall_glb /= size
-    recall_glb = recall_glb * 12
-    test_loss /= size
-
+    # Valutazione e visualizzazione
     eval_list = evaluation(confmat_glb)
     display_evaluation(eval_list)
             
-    #return test_loss, recall_glb
-    return test_loss, recall_glb, eval_list, confmat_glb
+    return test_loss, accuracy, eval_list, confmat_glb
 
 def train_test_itr(epochs, train_loader, test_loader):
     loss_fn = nn.CrossEntropyLoss()
