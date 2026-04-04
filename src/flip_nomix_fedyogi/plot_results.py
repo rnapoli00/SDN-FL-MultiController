@@ -97,11 +97,11 @@ def extract_confmat(row):
 
 def plot_loss_accuracy(clients, server_df, session_label=""):
     title_suffix = f" — {session_label}" if session_label else ""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
     fig.suptitle(f"Loss & Accuracy{title_suffix}", fontsize=14, fontweight="bold")
 
-    # Client loss
-    ax = axes[0]
+    # ── (0,0) Client loss ────────────────────────────────────────
+    ax = axes[0, 0]
     for i, (cid, df) in enumerate(clients.items()):
         ax.plot(df["round"], df["loss"], marker="o", color=COLORS[i], label=f"Client {cid}")
     ax.set_title("Loss per singolo client")
@@ -111,20 +111,21 @@ def plot_loss_accuracy(clients, server_df, session_label=""):
     ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend()
 
-    # Client accuracy
-    ax = axes[1]
+    # ── (0,1) Client accuracy ────────────────────────────────────
+    ax = axes[0, 1]
     for i, (cid, df) in enumerate(clients.items()):
         ax.plot(df["round"], df["accuracy"], marker="o", color=COLORS[i], label=f"Client {cid}")
-    ax.set_title("Accuracy per client")
+    ax.set_title("Accuracy per client (locale)")
     ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
     ax.set_xlabel("Round federato")
     ax.set_ylabel("Accuracy")
+    ax.set_ylim(0, 1.05)
     ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend()
 
-    # Server distributed loss
-    ax = axes[2]
-    if server_df is not None and not server_df.empty:
+    # ── (1,0) Server distributed loss ───────────────────────────
+    ax = axes[1, 0]
+    if server_df is not None and not server_df.empty and "distributed_loss" in server_df.columns:
         ax.plot(server_df["round"], server_df["distributed_loss"],
                 marker="s", color="#E91E63", linewidth=2, label="Server distributed loss")
         ax.set_title("Loss Distribuita (server)")
@@ -134,9 +135,30 @@ def plot_loss_accuracy(clients, server_df, session_label=""):
         ax.grid(True, linestyle="--", alpha=0.6)
         ax.legend()
     else:
-        ax.text(0.5, 0.5, "server_metrics.csv\nnon trovato", ha="center", va="center",
-                transform=ax.transAxes, fontsize=11, color="gray")
-        ax.set_title("Distributed Loss (server)")
+        ax.text(0.5, 0.5, "server_metrics.csv\nnon trovato\no colonna mancante",
+                ha="center", va="center", transform=ax.transAxes, fontsize=11, color="gray")
+        ax.set_title("Loss Distribuita (server)")
+
+    # ── (1,1) Server distributed accuracy ───────────────────────
+    ax = axes[1, 1]
+    if server_df is not None and not server_df.empty and "accuracy" in server_df.columns:
+        ax.plot(server_df["round"], server_df["accuracy"],
+                marker="D", color="#7B1FA2", linewidth=2, label="Server accuracy (pesata)")
+        ax.set_title("Distributed Accuracy (server)")
+        ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+        ax.set_xlabel("Round federato")
+        ax.set_ylabel("Accuracy aggregata (media pesata)")
+        ax.set_ylim(0, 1.05)
+        ax.axhline(y=server_df["accuracy"].max(), color="#CE93D8",
+                   linestyle=":", linewidth=1.2,
+                   label=f"Best: {server_df['accuracy'].max():.4f}")
+        ax.grid(True, linestyle="--", alpha=0.6)
+        ax.legend(fontsize=9)
+    else:
+        ax.text(0.5, 0.5, "Colonna 'accuracy' non trovata\nin server_metrics.csv\n\n"
+                           "Assicurati di usare il server.py\naggiornato con evaluate_metrics_aggregation_fn",
+                ha="center", va="center", transform=ax.transAxes, fontsize=10, color="gray")
+        ax.set_title("Distributed Accuracy (server)")
 
     fig.tight_layout()
     return fig
@@ -278,6 +300,67 @@ def plot_confusion_matrices(clients, session_label=""):
     return fig
 
 
+def plot_k5_distribution(clients, session_label=""):
+    """
+    Crea un grafico a barre in pila (100% stacked bar chart) per mostrare 
+    la distribuzione esatta delle 5 classi (il sample di Dirichlet) per ogni client.
+    """
+    title_suffix = f" — {session_label}" if session_label else ""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    client_ids = []
+    distributions = []
+    
+    for cid, df in clients.items():
+        if "cm_0_0" not in df.columns:
+            continue
+
+        last_row = df.iloc[-1]
+        cm = extract_confmat(last_row)
+        
+        # Le vere occorrenze delle classi si trovano sommando per riga la matrice
+        true_counts = cm.sum(axis=1) 
+        total = true_counts.sum()
+        
+        if total == 0:
+            props = np.zeros(5)
+        else:
+            props = true_counts / total
+            
+        client_ids.append(f"Client {cid}")
+        distributions.append(props)
+
+    if not distributions:
+        ax.text(0.5, 0.5, "Nessun dato disponibile", ha="center", va="center")
+        return fig
+
+    distributions = np.array(distributions) # shape (n_clients, 5)
+    
+    bottom = np.zeros(len(client_ids))
+    
+    for j, cls_name in enumerate(CLASS_NAMES):
+        bars = ax.bar(client_ids, distributions[:, j], label=cls_name, color=CLASS_COLORS[j], bottom=bottom)
+        
+        # Aggiungi le percentuali al centro di ogni segmento (se il blocco è visibile, > 3%)
+        for i, bar in enumerate(bars):
+            val = distributions[i, j]
+            if val > 0.03:
+                ax.text(bar.get_x() + bar.get_width()/2, 
+                        bottom[i] + val/2, 
+                        f"{val*100:.1f}%", 
+                        ha='center', va='center', color='white', fontsize=10, fontweight='bold')
+                
+        bottom += distributions[:, j]
+
+    ax.set_ylabel("Proporzione nel Test Set")
+    ax.set_title(f"Distribuzione Non-IID delle Classi (k=5) per Client{title_suffix}", fontsize=14, fontweight="bold")
+    ax.legend(title="Classi", bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.grid(axis='y', linestyle='--', alpha=0.4)
+
+    fig.tight_layout()
+    return fig
+
+
 # ──────────────────────────────────────────────────────────────
 # Salvataggio di una singola sessione
 # ──────────────────────────────────────────────────────────────
@@ -293,6 +376,14 @@ def save_session_plots(session_clients, session_server_df, suffix, extended):
     print(f"Salvato: {name1}")
 
     if extended:
+        # 6. Distribuzione k=5 (Barre in pila)
+        fig6 = plot_k5_distribution(session_clients, session_label=label)
+        name6 = f"plot_k5_distribution_{suffix}.png"
+        fig6.savefig(name6, dpi=150)
+        plt.close(fig6)
+        print(f"Salvato: {name6}")
+        # --------------------
+
         fig2 = plot_recall_per_class(session_clients, session_label=label)
         name2 = f"plot_recall_per_class_{suffix}.png"
         fig2.savefig(name2, dpi=150)
