@@ -287,7 +287,7 @@ def plot_k5_distribution(clients, session_label=""):
         bottom += distributions[:, j]
 
     ax.set_ylabel("Proporzione nel Test Set")
-    ax.set_title(f"Distribuzione Non-IID delle Classi (k=5) per Client{title_suffix}", fontsize=14, fontweight="bold")
+    ax.set_title(f"Distribuzione delle Classi (k=5) per Client{title_suffix}", fontsize=14, fontweight="bold")
     ax.legend(title="Classi", bbox_to_anchor=(1.05, 1), loc='upper left')
     ax.grid(axis='y', linestyle='--', alpha=0.4)
 
